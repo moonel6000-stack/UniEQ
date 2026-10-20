@@ -1,0 +1,9 @@
+Package: com.example.syseq
+Name: SysEQ
+Version: 0.1.0
+Architecture: iphoneos-arm
+Description: Égaliseur 5 bandes avec module flottant déplaçable
+Maintainer: you
+Author: you
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000)
