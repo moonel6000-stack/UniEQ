@@ -33,14 +33,14 @@ static OSStatus (*orig_AudioUnitSetProperty)(AudioUnit, AudioUnitPropertyID, Aud
 static OSStatus hook_AudioUnitSetProperty(AudioUnit unit, AudioUnitPropertyID pid, AudioUnitScope scope, AudioUnitElement elem, const void *data, UInt32 size) {
     if (pid == kAudioUnitProperty_SetRenderCallback && scope == kAudioUnitScope_Input && data && size >= sizeof(AURenderCallbackStruct) && isOutputUnit(unit)) {
         const AURenderCallbackStruct *cb = (const AURenderCallbackStruct *)data;
-        if (cb->inputProc && cb->inputProc != wrappedRender) {
+        if (cb->inputProc && (void *)cb->inputProc != (void *)wrappedRender) {
             SEQCtx *c = (SEQCtx *)calloc(1, sizeof(SEQCtx));
             c->unit = unit;
             c->bus = elem;
             c->orig = cb->inputProc;
             c->origRefCon = cb->inputProcRefCon;
             AURenderCallbackStruct n;
-            n.inputProc = wrappedRender;
+            n.inputProc = (AURenderCallback)(void *)wrappedRender;
             n.inputProcRefCon = c;
             return orig_AudioUnitSetProperty(unit, pid, scope, elem, &n, (UInt32)sizeof(n));
         }
