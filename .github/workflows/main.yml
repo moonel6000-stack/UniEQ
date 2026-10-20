@@ -1,22 +1,36 @@
 name: Build SysEQ
-on: [push, workflow_dispatch]
+
+on:
+  push:
+  workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   build:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Theos
         uses: Randomblock1/theos-action@v1
+
+      - name: Bump version
+        run: sed -i '' "s/^Version:.*/Version: 0.2.${{ github.run_number }}/" control
+
       - name: Build rootless
         run: make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+
       - uses: actions/upload-artifact@v4
         with:
           name: SysEQ-deb
           path: packages/*.deb
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
+          name: SysEQ build ${{ github.run_number }}
           files: packages/*.deb
+
