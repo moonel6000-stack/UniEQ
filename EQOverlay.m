@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#include <math.h>
 #include "EQShared.h"
 
 @interface SEQWindow : UIWindow @end
@@ -116,9 +117,9 @@
 }
 
 - (CGPoint)clamp:(CGPoint)c size:(CGSize)sz {
-    CGRect b = self.view.bounds; UIEdgeInsets in = self.view.safeAreaInsets;
+    CGRect b = self.view.bounds; UIEdgeInsets ins = self.view.safeAreaInsets;
     c.x = MAX(sz.width / 2, MIN(b.size.width - sz.width / 2, c.x));
-    c.y = MAX(in.top + sz.height / 2, MIN(b.size.height - in.bottom - sz.height / 2, c.y));
+    c.y = MAX(ins.top + sz.height / 2, MIN(b.size.height - ins.bottom - sz.height / 2, c.y));
     return c;
 }
 - (void)dragBubble:(UIPanGestureRecognizer *)g {

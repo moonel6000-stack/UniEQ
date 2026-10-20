@@ -2,6 +2,7 @@
 #import <AudioToolbox/AudioToolbox.h>
 #include <notify.h>
 #include <stdlib.h>
+#include <string.h>
 #include "EQShared.h"
 
 @interface SEQOverlay : NSObject
@@ -33,11 +34,11 @@ static bool isOutputUnit(AudioUnit unit) {
        AudioUnitScope scope, AudioUnitElement elem, const void *data, UInt32 size) {
     if (pid == kAudioUnitProperty_SetRenderCallback && scope == kAudioUnitScope_Input &&
         data && size >= sizeof(AURenderCallbackStruct) && isOutputUnit(unit)) {
-        const AURenderCallbackStruct *in = (const AURenderCallbackStruct *)data;
-        if (in->inputProc && in->inputProc != wrappedRender) {
+        const AURenderCallbackStruct *cb = (const AURenderCallbackStruct *)data;
+        if (cb->inputProc && cb->inputProc != wrappedRender) {
             SEQCtx *c = (SEQCtx *)calloc(1, sizeof(SEQCtx)); // fuite volontaire (petite)
             c->unit = unit; c->bus = elem;
-            c->orig = in->inputProc; c->origRefCon = in->inputProcRefCon;
+            c->orig = cb->inputProc; c->origRefCon = cb->inputProcRefCon;
             AURenderCallbackStruct n = { wrappedRender, c };
             return %orig(unit, pid, scope, elem, &n, sizeof(n));
         }
