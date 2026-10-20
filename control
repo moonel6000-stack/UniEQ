@@ -6,4 +6,4 @@ Description: Égaliseur 5 bandes avec module flottant déplaçable
 Maintainer: you
 Author: you
 Section: Tweaks
-Depends: mobilesubstrate (>= 0.9.5000)
+Depends: mobilesubstrate (>= 0.9.5000), preferenceloader

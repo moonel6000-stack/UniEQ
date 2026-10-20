@@ -1,4 +1,5 @@
 # SysEQ
-EQ 5 bandes (60/230/910/3600/14000 Hz, ±12 dB + préampli) avec module flottant déplaçable (SpringBoard).
-Build : `make package` (Theos requis). Changer de schéma : `THEOS_PACKAGE_SCHEME=rootless|roothide|` (vide = rootful).
-Limite : l'EQ s'applique aux apps qui rendent l'audio via RemoteIO (AudioUnit). AVPlayer / Apple Music passent par mediaserverd et ne sont pas traités.
+EQ 5 bandes + module flottant déplaçable + page dans Réglages (PreferenceLoader).
+Build : `make package` (Theos). Réglages : activer, afficher le module, mode (toutes sauf / seulement la sélection), choix des apps.
+Principe : SpringBoard lit les préférences et diffuse l'état via notifyd ; chaque app s'abonne et applique l'EQ sur sa sortie audio (RemoteIO, post-render).
+Limite : apps qui passent par mediaserverd (AVPlayer, Musique, Safari/YouTube) non couvertes.

@@ -4,19 +4,18 @@
 #include <substrate.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <os/lock.h>
 #include "EQShared.h"
 
-@interface SEQOverlay : NSObject
-+ (void)show;
-@end
+static dispatch_queue_t gQ;
 
-static OSStatus wrappedRender(void *refCon, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *ts, UInt32 bus, UInt32 frames, AudioBufferList *io) {
-    SEQCtx *c = (SEQCtx *)refCon;
-    OSStatus s = c->orig(c->origRefCon, flags, ts, bus, frames, io);
-    if (s == noErr && io && !(*flags & kAudioUnitRenderAction_OutputIsSilence)) {
-        SEQProcess(c, io, frames);
+/* ---------- rendu : on s'accroche en "post-render" sur l'unité de sortie ---------- */
+static OSStatus eqNotify(void *refCon, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *ts, UInt32 bus, UInt32 frames, AudioBufferList *io) {
+    if ((*flags & kAudioUnitRenderAction_PostRender) && io) {
+        SEQProcess((SEQCtx *)refCon, io, frames);
     }
-    return s;
+    return noErr;
 }
 
 static bool isOutputUnit(AudioUnit unit) {
@@ -28,41 +27,94 @@ static bool isOutputUnit(AudioUnit unit) {
     return d.componentSubType == kAudioUnitSubType_RemoteIO || d.componentSubType == kAudioUnitSubType_VoiceProcessingIO;
 }
 
-static OSStatus (*orig_AudioUnitSetProperty)(AudioUnit, AudioUnitPropertyID, AudioUnitScope, AudioUnitElement, const void *, UInt32);
+#define SEQ_MAXUNITS 64
+static AudioUnit gUnits[SEQ_MAXUNITS];
+static int gNumUnits = 0;
+static os_unfair_lock gLock = OS_UNFAIR_LOCK_INIT;
 
-static OSStatus hook_AudioUnitSetProperty(AudioUnit unit, AudioUnitPropertyID pid, AudioUnitScope scope, AudioUnitElement elem, const void *data, UInt32 size) {
-    if (pid == kAudioUnitProperty_SetRenderCallback && scope == kAudioUnitScope_Input && data && size >= sizeof(AURenderCallbackStruct) && isOutputUnit(unit)) {
-        const AURenderCallbackStruct *cb = (const AURenderCallbackStruct *)data;
-        if (cb->inputProc && (void *)cb->inputProc != (void *)wrappedRender) {
-            SEQCtx *c = (SEQCtx *)calloc(1, sizeof(SEQCtx));
-            c->unit = unit;
-            c->bus = elem;
-            c->orig = cb->inputProc;
-            c->origRefCon = cb->inputProcRefCon;
-            AURenderCallbackStruct n;
-            n.inputProc = (AURenderCallback)(void *)wrappedRender;
-            n.inputProcRefCon = c;
-            return orig_AudioUnitSetProperty(unit, pid, scope, elem, &n, (UInt32)sizeof(n));
-        }
+static void ensureNotify(AudioUnit unit) {
+    if (!unit || !isOutputUnit(unit)) return;
+    bool add = false;
+    os_unfair_lock_lock(&gLock);
+    bool found = false;
+    for (int i = 0; i < gNumUnits; i++) if (gUnits[i] == unit) { found = true; break; }
+    if (!found && gNumUnits < SEQ_MAXUNITS) { gUnits[gNumUnits++] = unit; add = true; }
+    os_unfair_lock_unlock(&gLock);
+    if (!add) return;
+    SEQCtx *c = (SEQCtx *)calloc(1, sizeof(SEQCtx));
+    c->unit = unit;
+    c->bus = 0;
+    AudioUnitAddRenderNotify(unit, (AURenderCallback)(void *)eqNotify, c);
+}
+
+static void forgetUnit(AudioUnit unit) {
+    os_unfair_lock_lock(&gLock);
+    for (int i = 0; i < gNumUnits; i++) {
+        if (gUnits[i] == unit) { gUnits[i] = gUnits[--gNumUnits]; break; }
     }
-    return orig_AudioUnitSetProperty(unit, pid, scope, elem, data, size);
+    os_unfair_lock_unlock(&gLock);
+}
+
+static OSStatus (*orig_Init)(AudioUnit);
+static OSStatus hook_Init(AudioUnit u) {
+    OSStatus s = orig_Init(u);
+    if (s == noErr) ensureNotify(u);
+    return s;
+}
+static OSStatus (*orig_Start)(AudioUnit);
+static OSStatus hook_Start(AudioUnit u) {
+    ensureNotify(u);
+    return orig_Start(u);
+}
+static OSStatus (*orig_Dispose)(AudioComponentInstance);
+static OSStatus hook_Dispose(AudioComponentInstance u) {
+    forgetUnit(u);
+    return orig_Dispose(u);
+}
+
+/* ---------- état reçu depuis SpringBoard (via notifyd, sans accès fichier) ---------- */
+static int gTokState = -1;
+static int gTokApp = -1;
+
+static void pullState(void) {
+    uint64_t st = 0, a = 0;
+    if (gTokState >= 0) notify_get_state(gTokState, &st);
+    if (gTokApp >= 0) notify_get_state(gTokApp, &a);
+    SEQApplyState(st, a != 0);
+}
+
+extern "C" void SEQAnnounceActive(void) {
+    dispatch_async(gQ, ^{
+        static int t = -1;
+        if (t < 0) notify_register_check(SEQ_ACTIVE_NOTIFY, &t);
+        if (t >= 0) notify_set_state(t, (uint64_t)getpid());
+        notify_post(SEQ_ACTIVE_NOTIFY);
+    });
 }
 
 %hook SpringBoard
 - (void)applicationDidFinishLaunching:(id)application {
     %orig;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        [SEQOverlay show];
+        [SEQHub start];
     });
 }
 %end
 
 %ctor {
-    SEQReloadGlobal();
-    static int tok;
-    notify_register_dispatch(SEQ_NOTIFY, &tok, dispatch_get_main_queue(), ^(int t) {
-        SEQReloadGlobal();
-    });
-    MSHookFunction((void *)AudioUnitSetProperty, (void *)hook_AudioUnitSetProperty, (void **)&orig_AudioUnitSetProperty);
+    gQ = dispatch_queue_create("com.example.syseq.q", DISPATCH_QUEUE_SERIAL);
+
+    notify_register_dispatch(SEQ_STATE_NOTIFY, &gTokState, gQ, ^(int t) { pullState(); });
+
+    NSString *bid = [[NSBundle mainBundle] bundleIdentifier];
+    if (bid.length) {
+        NSString *name = [NSString stringWithFormat:@"%s%@", SEQ_APP_PREFIX, bid];
+        notify_register_dispatch(name.UTF8String, &gTokApp, gQ, ^(int t) { pullState(); });
+    }
+    pullState();
+
+    MSHookFunction((void *)AudioUnitInitialize, (void *)hook_Init, (void **)&orig_Init);
+    MSHookFunction((void *)AudioOutputUnitStart, (void *)hook_Start, (void **)&orig_Start);
+    MSHookFunction((void *)AudioComponentInstanceDispose, (void *)hook_Dispose, (void **)&orig_Dispose);
     %init;
 }

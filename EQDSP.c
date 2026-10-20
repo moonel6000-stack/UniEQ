@@ -4,12 +4,12 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <notify.h>
 
-#define SEQ_PREFS_DOMAIN CFSTR("com.example.syseq")
 const float kSEQFreqs[SEQ_BANDS] = { 60.f, 230.f, 910.f, 3600.f, 14000.f };
 
 static SEQSettings gSet;
 static volatile int gVer = 1;
 
+/* ---------- préférences (utilisées par SpringBoard / overlay) ---------- */
 void SEQLoadSettings(SEQSettings *s) {
     memset(s, 0, sizeof(*s));
     CFPreferencesAppSynchronize(SEQ_PREFS_DOMAIN);
@@ -41,17 +41,39 @@ void SEQSaveSettings(const SEQSettings *s) {
         CFRelease(v); CFRelease(k);
     }
     CFPreferencesAppSynchronize(SEQ_PREFS_DOMAIN);
-    notify_post(SEQ_NOTIFY);
+    notify_post(SEQ_PREFS_NOTIFY);
 }
 
-void SEQReloadGlobal(void) { SEQLoadSettings(&gSet); gVer++; }
+/* ---------- état compact diffusé via notifyd (64 bits) ----------
+   bit0 = activé, bit1 = mode (0 = toutes sauf liste, 1 = seulement liste)
+   bits 8..15 = préampli (demi-dB, int8), bits 16.. = 5 bandes (demi-dB, int8) */
+uint64_t SEQPack(const SEQSettings *s) {
+    uint64_t v = s->enabled ? 1ull : 0ull;
+    v |= (uint64_t)(uint8_t)(int8_t)lrintf(s->pre * 2.f) << 8;
+    for (int i = 0; i < SEQ_BANDS; i++)
+        v |= (uint64_t)(uint8_t)(int8_t)lrintf(s->gains[i] * 2.f) << (16 + 8 * i);
+    return v;
+}
 
-// Peaking EQ (RBJ cookbook), Q = 1.0
+void SEQApplyState(uint64_t st, bool listed) {
+    SEQSettings s;
+    memset(&s, 0, sizeof(s));
+    s.pre = (float)(int8_t)((st >> 8) & 0xff) / 2.f;
+    for (int i = 0; i < SEQ_BANDS; i++)
+        s.gains[i] = (float)(int8_t)((st >> (16 + 8 * i)) & 0xff) / 2.f;
+    bool on = (st & 1ull) != 0;
+    bool includeOnly = (st & 2ull) != 0;
+    s.enabled = on && (includeOnly ? listed : !listed);
+    gSet = s;
+    gVer++;
+}
+
+/* ---------- DSP ---------- */
 static void calcCoef(SEQCoef *c, float f, float dB, float fs) {
     if (f >= fs * 0.45f) { c->b0 = 1; c->b1 = c->b2 = c->a1 = c->a2 = 0; return; }
     float A = powf(10.f, dB / 40.f);
     float w0 = 2.f * (float)M_PI * f / fs;
-    float al = sinf(w0) / 2.f; // Q=1
+    float al = sinf(w0) / 2.f; // Q = 1
     float cs = cosf(w0);
     float a0 = 1.f + al / A;
     c->b0 = (1.f + al * A) / a0;
@@ -62,8 +84,10 @@ static void calcCoef(SEQCoef *c, float f, float dB, float fs) {
 }
 
 static void applyChunk(SEQCtx *c, int ch, float *x, UInt32 n) {
-    float pre = powf(10.f, c->set.pre / 20.f);
-    if (fabsf(c->set.pre) > 0.01f) for (UInt32 i = 0; i < n; i++) x[i] *= pre;
+    if (fabsf(c->set.pre) > 0.01f) {
+        float pre = powf(10.f, c->set.pre / 20.f);
+        for (UInt32 i = 0; i < n; i++) x[i] *= pre;
+    }
     for (int b = 0; b < SEQ_BANDS; b++) {
         if (fabsf(c->set.gains[b]) < 0.05f) continue;
         const SEQCoef k = c->coef[b];
@@ -100,25 +124,37 @@ static void runChannel(SEQCtx *c, int ch, void *data, UInt32 frames, UInt32 stri
 
 void SEQProcess(SEQCtx *c, AudioBufferList *io, UInt32 frames) {
     if (!c->fmtOK) {
+        if (c->bad > 50) return;
         UInt32 sz = sizeof(c->fmt);
         if (AudioUnitGetProperty(c->unit, kAudioUnitProperty_StreamFormat,
-                                 kAudioUnitScope_Input, c->bus, &c->fmt, &sz) != noErr) return;
+                                 kAudioUnitScope_Input, c->bus, &c->fmt, &sz) != noErr) { c->bad++; return; }
         c->fmtOK = true; c->ver = 0;
     }
     int v = gVer;
     if (c->ver != v) {
-        c->set = gSet; c->ver = v;
+        c->set = gSet; c->ver = v; c->announced = false;
         float fs = c->fmt.mSampleRate > 0 ? (float)c->fmt.mSampleRate : 48000.f;
         for (int b = 0; b < SEQ_BANDS; b++) calcCoef(&c->coef[b], kSEQFreqs[b], c->set.gains[b], fs);
     }
     if (!c->set.enabled) return;
 
     const AudioStreamBasicDescription *f = &c->fmt;
-    if (f->mFormatID != kAudioFormatLinearPCM) return;
+    if (f->mFormatID != kAudioFormatLinearPCM || f->mBytesPerFrame == 0) return;
     bool isFloat = (f->mFormatFlags & kAudioFormatFlagIsFloat) && f->mBitsPerChannel == 32;
     bool isS16 = (f->mFormatFlags & kAudioFormatFlagIsSignedInteger) && f->mBitsPerChannel == 16;
     if (!isFloat && !isS16) return;
-    bool nonInter = f->mFormatFlags & kAudioFormatFlagIsNonInterleaved;
+    bool nonInter = (f->mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0;
+
+    /* sécurité : le tampon doit correspondre au format lu, sinon on relit le format */
+    UInt32 need = frames * f->mBytesPerFrame;
+    for (UInt32 i = 0; i < io->mNumberBuffers; i++) {
+        if (io->mBuffers[i].mData && io->mBuffers[i].mDataByteSize < need) {
+            c->fmtOK = false; c->bad++;
+            return;
+        }
+    }
+
+    if (!c->announced) { c->announced = true; SEQAnnounceActive(); }
 
     if (nonInter) {
         for (UInt32 i = 0; i < io->mNumberBuffers && i < SEQ_MAXCH; i++)

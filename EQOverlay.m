@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #include <math.h>
+#include <notify.h>
 #include "EQShared.h"
 
 @interface SEQWindow : UIWindow @end
@@ -14,9 +15,12 @@
 @property (nonatomic) UIButton *bubble;
 @property (nonatomic) UIView *panel;
 @property (nonatomic) UISwitch *sw;
+@property (nonatomic) UILabel *status;
 @property (nonatomic) NSMutableArray<UISlider *> *sliders; // 0 = pre, 1..5 = bandes
 @property (nonatomic) SEQSettings set;
 @end
+
+static __weak SEQVC *gVC;
 
 @implementation SEQVC
 
@@ -39,7 +43,7 @@
     [self refreshBubble];
 
     // Panneau
-    CGFloat W = 270, H = 330;
+    CGFloat W = 270, H = 360;
     self.panel = [[UIView alloc] initWithFrame:CGRectMake(80, 200, W, H)];
     self.panel.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.94];
     self.panel.layer.cornerRadius = 16;
@@ -73,6 +77,16 @@
         [self.panel addSubview:sl];
         [self.sliders addObject:sl];
     }
+    self.status = [[UILabel alloc] initWithFrame:CGRectMake(14, H - 66, W - 28, 20)];
+    self.status.font = [UIFont systemFontOfSize:12];
+    self.status.textColor = [UIColor colorWithWhite:0.65 alpha:1];
+    self.status.text = @"Aucune app traitée pour l’instant";
+    [self.panel addSubview:self.status];
+    gVC = self;
+    int tok;
+    __weak SEQVC *wself = self;
+    notify_register_dispatch(SEQ_PREFS_NOTIFY, &tok, dispatch_get_main_queue(), ^(int t) { [wself reloadFromPrefs]; });
+
     UIButton *reset = [UIButton buttonWithType:UIButtonTypeSystem];
     reset.frame = CGRectMake(14, H - 42, 90, 32);
     [reset setTitle:@"Reset" forState:UIControlStateNormal];
@@ -83,6 +97,14 @@
     [bass setTitle:@"Bass boost" forState:UIControlStateNormal];
     [bass addTarget:self action:@selector(bassPreset) forControlEvents:UIControlEventTouchUpInside];
     [self.panel addSubview:bass];
+}
+
+- (void)reloadFromPrefs {
+    SEQSettings s; SEQLoadSettings(&s); self.set = s;
+    if (!self.sliders[0].tracking) self.sliders[0].value = s.pre;
+    for (int i = 0; i < SEQ_BANDS; i++) if (!self.sliders[i + 1].tracking) self.sliders[i + 1].value = s.gains[i];
+    self.sw.on = s.enabled;
+    [self refreshBubble];
 }
 
 - (void)refreshBubble {
@@ -143,10 +165,13 @@
 }
 @end
 
-@interface SEQOverlay : NSObject @end
 static SEQWindow *gWin;
 
 @implementation SEQOverlay
++ (void)setVisible:(BOOL)v {
+    if (v) { [self show]; gWin.hidden = NO; } else { gWin.hidden = YES; }
+}
++ (void)setStatus:(NSString *)s { gVC.status.text = s; }
 + (void)show {
     if (gWin) return;
     UIWindowScene *scene = nil;
