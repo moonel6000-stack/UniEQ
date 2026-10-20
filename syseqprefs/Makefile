@@ -8,7 +8,9 @@ BUNDLE_NAME = SysEQPrefs
 
 SysEQPrefs_FILES = SEQRootListController.m SEQAppsController.m
 SysEQPrefs_FRAMEWORKS = UIKit
-SysEQPrefs_PRIVATE_FRAMEWORKS = Preferences
+# Le SDK Xcode récent n'embarque plus le framework privé Preferences :
+# on résout ses symboles au chargement (il est déjà présent dans l'app Réglages).
+SysEQPrefs_LDFLAGS = -undefined dynamic_lookup
 SysEQPrefs_INSTALL_PATH = /Library/PreferenceBundles
 SysEQPrefs_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable
 
