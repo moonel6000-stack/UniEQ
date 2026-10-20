@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>title</key><string>SysEQ</string>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>Général</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Activer l’égaliseur</string>
+			<key>key</key><string>enabled</string>
+			<key>default</key><false/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Afficher le module flottant</string>
+			<key>key</key><string>showOverlay</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>Applications</string>
+			<key>footerText</key><string>Les apps déjà ouvertes peuvent nécessiter un redémarrage pour être prises en compte.</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSLinkListCell</string>
+			<key>label</key><string>Mode</string>
+			<key>key</key><string>mode</string>
+			<key>default</key><integer>0</integer>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>detail</key><string>PSListItemsController</string>
+			<key>validValues</key>
+			<array><integer>0</integer><integer>1</integer></array>
+			<key>validTitles</key>
+			<array><string>Toutes sauf la sélection</string><string>Seulement la sélection</string></array>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSLinkCell</string>
+			<key>label</key><string>Choisir les apps</string>
+			<key>detail</key><string>SEQAppsController</string>
+		</dict>
+	</array>
+</dict>
+</plist>
