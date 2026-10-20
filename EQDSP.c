@@ -4,7 +4,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <notify.h>
 
-#define DOMAIN CFSTR("com.example.syseq")
+#define SEQ_PREFS_DOMAIN CFSTR("com.example.syseq")
 const float kSEQFreqs[SEQ_BANDS] = { 60.f, 230.f, 910.f, 3600.f, 14000.f };
 
 static SEQSettings gSet;
@@ -12,16 +12,16 @@ static volatile int gVer = 1;
 
 void SEQLoadSettings(SEQSettings *s) {
     memset(s, 0, sizeof(*s));
-    CFPreferencesAppSynchronize(DOMAIN);
-    CFPropertyListRef en = CFPreferencesCopyAppValue(CFSTR("enabled"), DOMAIN);
+    CFPreferencesAppSynchronize(SEQ_PREFS_DOMAIN);
+    CFPropertyListRef en = CFPreferencesCopyAppValue(CFSTR("enabled"), SEQ_PREFS_DOMAIN);
     s->enabled = (en && CFGetTypeID(en) == CFBooleanGetTypeID()) ? CFBooleanGetValue(en) : false;
     if (en) CFRelease(en);
-    CFPropertyListRef p = CFPreferencesCopyAppValue(CFSTR("pre"), DOMAIN);
+    CFPropertyListRef p = CFPreferencesCopyAppValue(CFSTR("pre"), SEQ_PREFS_DOMAIN);
     double d = 0; if (p) { CFNumberGetValue(p, kCFNumberDoubleType, &d); CFRelease(p); }
     s->pre = (float)d;
     for (int i = 0; i < SEQ_BANDS; i++) {
         CFStringRef k = CFStringCreateWithFormat(NULL, NULL, CFSTR("band%d"), i);
-        CFPropertyListRef v = CFPreferencesCopyAppValue(k, DOMAIN);
+        CFPropertyListRef v = CFPreferencesCopyAppValue(k, SEQ_PREFS_DOMAIN);
         double g = 0; if (v) { CFNumberGetValue(v, kCFNumberDoubleType, &g); CFRelease(v); }
         s->gains[i] = (float)g;
         CFRelease(k);
@@ -29,18 +29,18 @@ void SEQLoadSettings(SEQSettings *s) {
 }
 
 void SEQSaveSettings(const SEQSettings *s) {
-    CFPreferencesSetAppValue(CFSTR("enabled"), s->enabled ? kCFBooleanTrue : kCFBooleanFalse, DOMAIN);
+    CFPreferencesSetAppValue(CFSTR("enabled"), s->enabled ? kCFBooleanTrue : kCFBooleanFalse, SEQ_PREFS_DOMAIN);
     double d = s->pre;
     CFNumberRef n = CFNumberCreate(NULL, kCFNumberDoubleType, &d);
-    CFPreferencesSetAppValue(CFSTR("pre"), n, DOMAIN); CFRelease(n);
+    CFPreferencesSetAppValue(CFSTR("pre"), n, SEQ_PREFS_DOMAIN); CFRelease(n);
     for (int i = 0; i < SEQ_BANDS; i++) {
         CFStringRef k = CFStringCreateWithFormat(NULL, NULL, CFSTR("band%d"), i);
         double g = s->gains[i];
         CFNumberRef v = CFNumberCreate(NULL, kCFNumberDoubleType, &g);
-        CFPreferencesSetAppValue(k, v, DOMAIN);
+        CFPreferencesSetAppValue(k, v, SEQ_PREFS_DOMAIN);
         CFRelease(v); CFRelease(k);
     }
-    CFPreferencesAppSynchronize(DOMAIN);
+    CFPreferencesAppSynchronize(SEQ_PREFS_DOMAIN);
     notify_post(SEQ_NOTIFY);
 }
 
