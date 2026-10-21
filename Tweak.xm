@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import <AudioToolbox/AudioToolbox.h>
+#import <AVFoundation/AVFoundation.h>
 #include <notify.h>
 #include <substrate.h>
 #include <stdlib.h>
@@ -10,9 +11,41 @@
 
 static dispatch_queue_t gQ;
 
+/* ---------- sortie audio courante (haut-parleur, filaire, Bluetooth, AirPlay, autre) ---------- */
+static int classifyRoute(void) {
+    int bits = 0;
+    AVAudioSessionRouteDescription *r = [AVAudioSession sharedInstance].currentRoute;
+    for (AVAudioSessionPortDescription *p in r.outputs) {
+        NSString *t = p.portType;
+        if ([t isEqualToString:AVAudioSessionPortBuiltInSpeaker] || [t isEqualToString:AVAudioSessionPortBuiltInReceiver]) bits |= 1;
+        else if ([t isEqualToString:AVAudioSessionPortHeadphones] || [t isEqualToString:AVAudioSessionPortLineOut]) bits |= 2;
+        else if ([t isEqualToString:AVAudioSessionPortBluetoothA2DP] || [t isEqualToString:AVAudioSessionPortBluetoothHFP] || [t isEqualToString:AVAudioSessionPortBluetoothLE]) bits |= 4;
+        else if ([t isEqualToString:AVAudioSessionPortAirPlay]) bits |= 8;
+        else bits |= 16;
+    }
+    return bits;
+}
+
+static void refreshRoute(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{ SEQSetRoute(classifyRoute()); });
+}
+
+static void startRouteWatch(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter] addObserverForName:AVAudioSessionRouteChangeNotification
+                                                              object:nil
+                                                               queue:nil
+                                                          usingBlock:^(NSNotification *n) { SEQSetRoute(classifyRoute()); }];
+            SEQSetRoute(classifyRoute());
+        });
+    });
+}
+
 /* ---------- rendu : on s'accroche en "post-render" sur l'unité de sortie ---------- */
 static OSStatus eqNotify(void *refCon, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *ts, UInt32 bus, UInt32 frames, AudioBufferList *io) {
-    if ((*flags & kAudioUnitRenderAction_PostRender) && io) {
+    if ((*flags & kAudioUnitRenderAction_PostRender) && !(*flags & kAudioUnitRenderAction_OutputIsSilence) && io) {
         SEQProcess((SEQCtx *)refCon, io, frames);
     }
     return noErr;
@@ -41,6 +74,7 @@ static void ensureNotify(AudioUnit unit) {
     if (!found && gNumUnits < SEQ_MAXUNITS) { gUnits[gNumUnits++] = unit; add = true; }
     os_unfair_lock_unlock(&gLock);
     if (!add) return;
+    startRouteWatch();
     SEQCtx *c = (SEQCtx *)calloc(1, sizeof(SEQCtx));
     c->unit = unit;
     c->bus = 0;
@@ -64,6 +98,7 @@ static OSStatus hook_Init(AudioUnit u) {
 static OSStatus (*orig_Start)(AudioUnit);
 static OSStatus hook_Start(AudioUnit u) {
     ensureNotify(u);
+    refreshRoute();
     return orig_Start(u);
 }
 static OSStatus (*orig_Dispose)(AudioComponentInstance);
@@ -73,6 +108,7 @@ static OSStatus hook_Dispose(AudioComponentInstance u) {
 }
 
 /* ---------- état reçu depuis SpringBoard (via notifyd, sans accès fichier) ---------- */
+static uint64_t gSelfHash = 0;
 static int gTokState = -1;
 static int gTokApp = -1;
 
@@ -84,10 +120,11 @@ static void pullState(void) {
 }
 
 extern "C" void SEQAnnounceActive(void) {
+    if (!gSelfHash) return;
     dispatch_async(gQ, ^{
         static int t = -1;
         if (t < 0) notify_register_check(SEQ_ACTIVE_NOTIFY, &t);
-        if (t >= 0) notify_set_state(t, (uint64_t)getpid());
+        if (t >= 0) notify_set_state(t, gSelfHash);
         notify_post(SEQ_ACTIVE_NOTIFY);
     });
 }
@@ -108,6 +145,7 @@ extern "C" void SEQAnnounceActive(void) {
 
     NSString *bid = [[NSBundle mainBundle] bundleIdentifier];
     if (bid.length) {
+        gSelfHash = SEQHashString(bid.UTF8String);
         NSString *name = [NSString stringWithFormat:@"%s%@", SEQ_APP_PREFIX, bid];
         notify_register_dispatch(name.UTF8String, &gTokApp, gQ, ^(int t) { pullState(); });
     }

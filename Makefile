@@ -8,10 +8,10 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = SysEQ
 
-SysEQ_FILES = Tweak.xm EQDSP.c EQOverlay.m EQHub.m
+SysEQ_FILES = Tweak.xm EQDSP.c EQOverlay.m EQHub.m EQSettingsView.m
 SysEQ_CFLAGS = -O2 -Wno-unused-variable -Wno-deprecated-declarations -Wno-unused-function
 SysEQ_OBJCFLAGS = -fobjc-arc
-SysEQ_FRAMEWORKS = UIKit AudioToolbox Foundation
+SysEQ_FRAMEWORKS = UIKit AudioToolbox AVFoundation Foundation
 
 SUBPROJECTS += syseqprefs
 

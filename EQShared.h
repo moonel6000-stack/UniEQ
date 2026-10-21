@@ -26,6 +26,7 @@ typedef struct {
     UInt32 bus;
     bool fmtOK;
     bool announced;
+    UInt32 sinceAnn;
     int bad;
     AudioStreamBasicDescription fmt;
     int ver;
@@ -43,6 +44,13 @@ uint64_t SEQPack(const SEQSettings *s);
 void SEQApplyState(uint64_t st, bool listed);
 void SEQProcess(SEQCtx *c, AudioBufferList *io, UInt32 frames);
 void SEQAnnounceActive(void);   /* défini dans Tweak.xm */
+uint64_t SEQHashString(const char *s);
+void SEQResetAppSelection(void);
+void SEQSetRoute(int route);    /* 1=HP 2=filaire 4=Bluetooth 8=AirPlay 16=autre 0=inconnu */
+bool SEQGetPrefBool(const char *key, bool def);
+int  SEQGetPrefInt(const char *key, int def);
+void SEQSetPrefBool(const char *key, bool v);
+void SEQSetPrefInt(const char *key, int v);
 #ifdef __cplusplus
 }
 #endif
@@ -56,5 +64,6 @@ void SEQAnnounceActive(void);   /* défini dans Tweak.xm */
 
 @interface SEQHub : NSObject
 + (void)start;
++ (NSArray<NSDictionary *> *)activeApps;   /* apps qui produisent du son (bid, name) */
 @end
 #endif

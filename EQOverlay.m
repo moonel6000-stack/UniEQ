@@ -2,6 +2,7 @@
 #include <math.h>
 #include <notify.h>
 #include "EQShared.h"
+#import "EQSettingsView.h"
 
 @interface SEQWindow : UIWindow @end
 @implementation SEQWindow
@@ -16,6 +17,7 @@
 @property (nonatomic) UIView *panel;
 @property (nonatomic) UISwitch *sw;
 @property (nonatomic) UILabel *status;
+@property (nonatomic) SEQSettingsView *settings;
 @property (nonatomic) NSMutableArray<UISlider *> *sliders; // 0 = pre, 1..5 = bandes
 @property (nonatomic) SEQSettings set;
 @end
@@ -61,6 +63,12 @@ static __weak SEQVC *gVC;
     self.sw.on = self.set.enabled;
     [self.sw addTarget:self action:@selector(swChanged) forControlEvents:UIControlEventValueChanged];
     [head addSubview:self.sw];
+    UIButton *gear = [UIButton buttonWithType:UIButtonTypeSystem];
+    gear.frame = CGRectMake(W - 108, 2, 40, 40);
+    [gear setTitle:@"⚙︎" forState:UIControlStateNormal];
+    gear.titleLabel.font = [UIFont systemFontOfSize:22];
+    [gear addTarget:self action:@selector(openSettings) forControlEvents:UIControlEventTouchUpInside];
+    [head addSubview:gear];
 
     NSArray *names = @[@"Pré", @"60 Hz", @"230", @"910", @"3.6k", @"14k"];
     self.sliders = [NSMutableArray array];
@@ -80,7 +88,9 @@ static __weak SEQVC *gVC;
     self.status = [[UILabel alloc] initWithFrame:CGRectMake(14, H - 66, W - 28, 20)];
     self.status.font = [UIFont systemFontOfSize:12];
     self.status.textColor = [UIColor colorWithWhite:0.65 alpha:1];
-    self.status.text = @"Aucune app traitée pour l’instant";
+    self.status.text = @"Aucun son détecté";
+    self.status.userInteractionEnabled = YES;
+    [self.status addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(openSettings)]];
     [self.panel addSubview:self.status];
     gVC = self;
     int tok;
@@ -97,7 +107,15 @@ static __weak SEQVC *gVC;
     [bass setTitle:@"Bass boost" forState:UIControlStateNormal];
     [bass addTarget:self action:@selector(bassPreset) forControlEvents:UIControlEventTouchUpInside];
     [self.panel addSubview:bass];
+
+    self.settings = [[SEQSettingsView alloc] initWithFrame:self.panel.bounds];
+    self.settings.hidden = YES;
+    __weak SEQVC *ws = self;
+    self.settings.onBack = ^{ ws.settings.hidden = YES; };
+    [self.panel addSubview:self.settings];
 }
+
+- (void)openSettings { self.settings.hidden = NO; [self.panel bringSubviewToFront:self.settings]; }
 
 - (void)reloadFromPrefs {
     SEQSettings s; SEQLoadSettings(&s); self.set = s;

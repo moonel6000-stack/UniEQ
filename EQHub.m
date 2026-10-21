@@ -1,13 +1,16 @@
 #import <UIKit/UIKit.h>
 #include <notify.h>
 #include "EQShared.h"
-
-extern int proc_name(int pid, void *buffer, uint32_t buffersize);
+#import "EQSettingsView.h"
 
 static int gTokState = -1;
 static int gTokActive = -1;
 static NSMutableDictionary<NSString *, NSNumber *> *gAppTokens;
 static NSMutableSet<NSString *> *gPublished;
+static NSDictionary<NSNumber *, NSDictionary *> *gHashMap;
+static NSDate *gHashMapDate;
+static NSMutableDictionary<NSString *, NSDictionary *> *gActive;
+static dispatch_source_t gTimer;
 
 static int tokenFor(NSString *name) {
     NSNumber *n = gAppTokens[name];
@@ -32,11 +35,17 @@ static void setApp(NSString *name, uint64_t v) {
     dispatch_once(&once, ^{
         gAppTokens = [NSMutableDictionary dictionary];
         gPublished = [NSMutableSet set];
+        gActive = [NSMutableDictionary dictionary];
         notify_register_check(SEQ_STATE_NOTIFY, &gTokState);
-        int t1, t2;
+        int t1;
         notify_register_dispatch(SEQ_PREFS_NOTIFY, &t1, dispatch_get_main_queue(), ^(int x) { [SEQHub publish]; });
         notify_register_dispatch(SEQ_ACTIVE_NOTIFY, &gTokActive, dispatch_get_main_queue(), ^(int x) { [SEQHub activity]; });
-        (void)t2;
+
+        gTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+        dispatch_source_set_timer(gTimer, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), 3 * NSEC_PER_SEC, NSEC_PER_SEC);
+        dispatch_source_set_event_handler(gTimer, ^{ [SEQHub updateStatus]; });
+        dispatch_resume(gTimer);
+
         [SEQHub publish];
     });
 }
@@ -45,15 +54,13 @@ static void setApp(NSString *name, uint64_t v) {
     SEQSettings s;
     SEQLoadSettings(&s);
 
-    int mode = 0;
-    CFPropertyListRef m = CFPreferencesCopyAppValue(CFSTR("mode"), SEQ_PREFS_DOMAIN);
-    if (m) { if (CFGetTypeID(m) == CFNumberGetTypeID()) CFNumberGetValue((CFNumberRef)m, kCFNumberIntType, &mode); CFRelease(m); }
+    int mode = SEQGetPrefInt("mode", 0);
+    BOOL show = SEQGetPrefBool("showOverlay", true);
+    static const char *outKeys[5] = { "out.speaker", "out.wired", "out.bt", "out.airplay", "out.other" };
+    uint64_t mask = 0;
+    for (int i = 0; i < 5; i++) if (SEQGetPrefBool(outKeys[i], true)) mask |= (1ull << i);
 
-    BOOL show = YES;
-    CFPropertyListRef sh = CFPreferencesCopyAppValue(CFSTR("showOverlay"), SEQ_PREFS_DOMAIN);
-    if (sh) { if (CFGetTypeID(sh) == CFBooleanGetTypeID()) show = CFBooleanGetValue((CFBooleanRef)sh); CFRelease(sh); }
-
-    uint64_t st = SEQPack(&s) | (mode ? 2ull : 0ull);
+    uint64_t st = SEQPack(&s) | (mode ? 2ull : 0ull) | (mask << 56);
     if (gTokState >= 0) notify_set_state(gTokState, st);
     notify_post(SEQ_STATE_NOTIFY);
 
@@ -77,12 +84,53 @@ static void setApp(NSString *name, uint64_t v) {
     [SEQOverlay setVisible:show];
 }
 
++ (NSDictionary *)appForHash:(uint64_t)h {
+    NSNumber *k = @(h);
+    NSDictionary *a = gHashMap[k];
+    if (!a && (!gHashMapDate || [[NSDate date] timeIntervalSinceDate:gHashMapDate] > 30)) {
+        NSMutableDictionary *m = [NSMutableDictionary dictionary];
+        for (NSDictionary *d in SEQInstalledApps()) m[@(SEQHashString([d[@"bid"] UTF8String]))] = d;
+        gHashMap = m;
+        gHashMapDate = [NSDate date];
+        a = gHashMap[k];
+    }
+    return a;
+}
+
 + (void)activity {
-    uint64_t pid = 0;
-    if (gTokActive >= 0) notify_get_state(gTokActive, &pid);
-    char buf[64] = {0};
-    proc_name((int)pid, buf, sizeof(buf));
-    [SEQOverlay setStatus:[NSString stringWithFormat:@"Actif : %s", buf]];
+    uint64_t h = 0;
+    if (gTokActive >= 0) notify_get_state(gTokActive, &h);
+    NSDictionary *a = [SEQHub appForHash:h];
+    if (!a) return;
+    gActive[a[@"bid"]] = @{ @"bid": a[@"bid"], @"name": a[@"name"], @"t": [NSDate date] };
+    [SEQHub updateStatus];
+}
+
++ (NSArray<NSDictionary *> *)activeApps {
+    NSDate *now = [NSDate date];
+    NSMutableArray *out = [NSMutableArray array];
+    for (NSString *bid in [gActive allKeys]) {
+        NSDictionary *d = gActive[bid];
+        if ([now timeIntervalSinceDate:d[@"t"]] > 6.0) { [gActive removeObjectForKey:bid]; continue; }
+        [out addObject:d];
+    }
+    [out sortUsingComparator:^NSComparisonResult(NSDictionary *x, NSDictionary *y) {
+        return [x[@"name"] localizedCaseInsensitiveCompare:y[@"name"]];
+    }];
+    return out;
+}
+
++ (void)updateStatus {
+    NSArray *a = [SEQHub activeApps];
+    NSString *txt;
+    if (a.count == 0) {
+        txt = @"Aucun son détecté";
+    } else {
+        NSMutableArray *names = [NSMutableArray array];
+        for (NSDictionary *d in a) [names addObject:d[@"name"]];
+        txt = [@"Son : " stringByAppendingString:[names componentsJoinedByString:@", "]];
+    }
+    [SEQOverlay setStatus:txt];
 }
 
 @end

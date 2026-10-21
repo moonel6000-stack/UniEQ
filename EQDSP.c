@@ -55,17 +55,87 @@ uint64_t SEQPack(const SEQSettings *s) {
     return v;
 }
 
-void SEQApplyState(uint64_t st, bool listed) {
+static uint64_t gRaw = 0;
+static bool gListed = false;
+static int gRoute = 0;   /* 0 = inconnu -> autorisé */
+
+static void recompute(void) {
     SEQSettings s;
     memset(&s, 0, sizeof(s));
+    uint64_t st = gRaw;
     s.pre = (float)(int8_t)((st >> 8) & 0xff) / 2.f;
     for (int i = 0; i < SEQ_BANDS; i++)
         s.gains[i] = (float)(int8_t)((st >> (16 + 8 * i)) & 0xff) / 2.f;
     bool on = (st & 1ull) != 0;
     bool includeOnly = (st & 2ull) != 0;
-    s.enabled = on && (includeOnly ? listed : !listed);
+    int mask = (int)((st >> 56) & 0xff);
+    bool outOK = (gRoute == 0) || ((mask & gRoute) != 0);
+    s.enabled = on && outOK && (includeOnly ? gListed : !gListed);
     gSet = s;
     gVer++;
+}
+
+void SEQApplyState(uint64_t st, bool listed) { gRaw = st; gListed = listed; recompute(); }
+void SEQSetRoute(int route) { gRoute = route; recompute(); }
+
+uint64_t SEQHashString(const char *str) {
+    uint64_t h = 1469598103934665603ull;
+    while (*str) { h ^= (uint8_t)*str++; h *= 1099511628211ull; }
+    return h;
+}
+
+void SEQResetAppSelection(void) {
+    CFArrayRef keys = CFPreferencesCopyKeyList(SEQ_PREFS_DOMAIN, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    if (keys) {
+        CFIndex n = CFArrayGetCount(keys);
+        for (CFIndex i = 0; i < n; i++) {
+            CFStringRef k = (CFStringRef)CFArrayGetValueAtIndex(keys, i);
+            if (CFStringHasPrefix(k, CFSTR("app."))) CFPreferencesSetAppValue(k, NULL, SEQ_PREFS_DOMAIN);
+        }
+        CFRelease(keys);
+    }
+    CFPreferencesAppSynchronize(SEQ_PREFS_DOMAIN);
+    notify_post(SEQ_PREFS_NOTIFY);
+}
+
+/* ---------- accès simples aux préférences ---------- */
+bool SEQGetPrefBool(const char *key, bool def) {
+    CFStringRef k = CFStringCreateWithCString(NULL, key, kCFStringEncodingUTF8);
+    CFPropertyListRef v = CFPreferencesCopyAppValue(k, SEQ_PREFS_DOMAIN);
+    CFRelease(k);
+    bool r = def;
+    if (v) {
+        if (CFGetTypeID(v) == CFBooleanGetTypeID()) r = CFBooleanGetValue(v);
+        else if (CFGetTypeID(v) == CFNumberGetTypeID()) { int n = 0; CFNumberGetValue(v, kCFNumberIntType, &n); r = (n != 0); }
+        CFRelease(v);
+    }
+    return r;
+}
+
+int SEQGetPrefInt(const char *key, int def) {
+    CFStringRef k = CFStringCreateWithCString(NULL, key, kCFStringEncodingUTF8);
+    CFPropertyListRef v = CFPreferencesCopyAppValue(k, SEQ_PREFS_DOMAIN);
+    CFRelease(k);
+    int r = def;
+    if (v) { if (CFGetTypeID(v) == CFNumberGetTypeID()) CFNumberGetValue(v, kCFNumberIntType, &r); CFRelease(v); }
+    return r;
+}
+
+void SEQSetPrefBool(const char *key, bool val) {
+    CFStringRef k = CFStringCreateWithCString(NULL, key, kCFStringEncodingUTF8);
+    CFPreferencesSetAppValue(k, val ? kCFBooleanTrue : kCFBooleanFalse, SEQ_PREFS_DOMAIN);
+    CFRelease(k);
+    CFPreferencesAppSynchronize(SEQ_PREFS_DOMAIN);
+    notify_post(SEQ_PREFS_NOTIFY);
+}
+
+void SEQSetPrefInt(const char *key, int val) {
+    CFStringRef k = CFStringCreateWithCString(NULL, key, kCFStringEncodingUTF8);
+    CFNumberRef n = CFNumberCreate(NULL, kCFNumberIntType, &val);
+    CFPreferencesSetAppValue(k, n, SEQ_PREFS_DOMAIN);
+    CFRelease(n); CFRelease(k);
+    CFPreferencesAppSynchronize(SEQ_PREFS_DOMAIN);
+    notify_post(SEQ_PREFS_NOTIFY);
 }
 
 /* ---------- DSP ---------- */
@@ -132,10 +202,15 @@ void SEQProcess(SEQCtx *c, AudioBufferList *io, UInt32 frames) {
     }
     int v = gVer;
     if (c->ver != v) {
-        c->set = gSet; c->ver = v; c->announced = false;
+        c->set = gSet; c->ver = v;
         float fs = c->fmt.mSampleRate > 0 ? (float)c->fmt.mSampleRate : 48000.f;
         for (int b = 0; b < SEQ_BANDS; b++) calcCoef(&c->coef[b], kSEQFreqs[b], c->set.gains[b], fs);
     }
+    /* signale périodiquement que cette app produit du son (même si l'EQ est off pour elle) */
+    c->sinceAnn += frames;
+    UInt32 period = (UInt32)(c->fmt.mSampleRate > 0 ? c->fmt.mSampleRate * 2.0 : 96000.0);
+    if (!c->announced || c->sinceAnn >= period) { c->announced = true; c->sinceAnn = 0; SEQAnnounceActive(); }
+
     if (!c->set.enabled) return;
 
     const AudioStreamBasicDescription *f = &c->fmt;
@@ -153,8 +228,6 @@ void SEQProcess(SEQCtx *c, AudioBufferList *io, UInt32 frames) {
             return;
         }
     }
-
-    if (!c->announced) { c->announced = true; SEQAnnounceActive(); }
 
     if (nonInter) {
         for (UInt32 i = 0; i < io->mNumberBuffers && i < SEQ_MAXCH; i++)
