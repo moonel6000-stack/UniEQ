@@ -27,6 +27,51 @@
 		</dict>
 		<dict>
 			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>Sorties audio</string>
+			<key>footerText</key><string>L’égaliseur s’applique uniquement aux sorties cochées.</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Haut-parleur / récepteur</string>
+			<key>key</key><string>out.speaker</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Écouteurs filaires</string>
+			<key>key</key><string>out.wired</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Bluetooth</string>
+			<key>key</key><string>out.bt</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>AirPlay</string>
+			<key>key</key><string>out.airplay</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Autres (USB, HDMI, voiture)</string>
+			<key>key</key><string>out.other</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
 			<key>label</key><string>Applications</string>
 			<key>footerText</key><string>Les apps déjà ouvertes peuvent nécessiter un redémarrage pour être prises en compte.</string>
 		</dict>
@@ -42,6 +87,11 @@
 			<key>validTitles</key>
 			<array><string>Toutes sauf la sélection</string><string>Seulement la sélection</string></array>
 			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSButtonCell</string>
+			<key>label</key><string>Réinitialiser la sélection d’apps</string>
+			<key>action</key><string>resetApps</string>
 		</dict>
 		<dict>
 			<key>cell</key><string>PSLinkCell</string>
