@@ -4,11 +4,94 @@
 <dict>
 	<key>entry</key>
 	<dict>
-		<key>bundle</key><string>SysEQPrefs</string>
 		<key>cell</key><string>PSLinkCell</string>
-		<key>detail</key><string>SEQRootListController</string>
-		<key>isController</key><true/>
 		<key>label</key><string>SysEQ</string>
 	</dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>Général</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Activer l’égaliseur</string>
+			<key>key</key><string>enabled</string>
+			<key>default</key><false/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Afficher le module flottant</string>
+			<key>key</key><string>showOverlay</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>Sorties audio</string>
+			<key>footerText</key><string>L’égaliseur s’applique uniquement aux sorties cochées.</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Haut-parleur / récepteur</string>
+			<key>key</key><string>out.speaker</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Écouteurs filaires</string>
+			<key>key</key><string>out.wired</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Bluetooth</string>
+			<key>key</key><string>out.bt</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>AirPlay</string>
+			<key>key</key><string>out.airplay</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>label</key><string>Autres (USB, HDMI, voiture)</string>
+			<key>key</key><string>out.other</string>
+			<key>default</key><true/>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>Applications</string>
+			<key>footerText</key><string>Le choix des apps se fait dans « SysEQ – Applications » ou dans le module flottant (⚙︎).</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSLinkListCell</string>
+			<key>label</key><string>Mode</string>
+			<key>key</key><string>mode</string>
+			<key>default</key><integer>0</integer>
+			<key>defaults</key><string>com.example.syseq</string>
+			<key>detail</key><string>PSListItemsController</string>
+			<key>validValues</key>
+			<array><integer>0</integer><integer>1</integer></array>
+			<key>validTitles</key>
+			<array><string>Toutes sauf la sélection</string><string>Seulement la sélection</string></array>
+			<key>PostNotification</key><string>com.example.syseq/prefschanged</string>
+		</dict>
+	</array>
 </dict>
 </plist>
