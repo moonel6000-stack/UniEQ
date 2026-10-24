@@ -6,12 +6,15 @@ THEOS_PACKAGE_SCHEME ?= rootless
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = SysEQ
+TWEAK_NAME = SysEQ SysEQProbe
 
-SysEQ_FILES = Tweak.xm EQDSP.c EQOverlay.m EQHub.m EQSettingsView.m
+SysEQ_FILES = Tweak.xm EQDSP.c EQOverlay.m EQHub.m EQSettingsView.m EQProbeNames.c
 SysEQ_CFLAGS = -O2 -Wno-unused-variable -Wno-deprecated-declarations -Wno-unused-function
 SysEQ_OBJCFLAGS = -fobjc-arc
 SysEQ_FRAMEWORKS = UIKit AudioToolbox AVFoundation Foundation
+
+SysEQProbe_FILES = EQProbe.c EQProbeNames.c
+SysEQProbe_CFLAGS = -O2 -Wno-unused-variable
 
 SUBPROJECTS += syseqprefs
 

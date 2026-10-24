@@ -133,4 +133,26 @@ static void setApp(NSString *name, uint64_t v) {
     [SEQOverlay setStatus:txt];
 }
 
+
++ (NSString *)probeReport {
+    static NSMutableDictionary<NSString *, NSNumber *> *toks;
+    if (!toks) toks = [NSMutableDictionary dictionary];
+    NSMutableString *out = [NSMutableString string];
+    for (NSString *proc in @[@"mediaserverd", @"audiomxd"]) {
+        NSString *name = [@"com.example.syseq/probe." stringByAppendingString:proc];
+        NSNumber *tn = toks[name];
+        int t = -1;
+        if (tn) t = tn.intValue; else { notify_register_check(name.UTF8String, &t); toks[name] = @(t); }
+        uint64_t st = 0;
+        if (t >= 0) notify_get_state(t, &st);
+        if (!(st >> 63)) { [out appendFormat:@"%@ : sonde non chargée\n", proc]; continue; }
+        [out appendFormat:@"%@ :\n", proc];
+        for (int i = 0; i < SEQ_NPROBE; i++) {
+            BOOL present = (st >> i) & 1, called = (st >> (16 + i)) & 1;
+            [out appendFormat:@"  %s — %@\n", kSEQProbeNames[i], called ? @"APPELÉE" : (present ? @"présente" : @"absente")];
+        }
+    }
+    return out;
+}
+
 @end

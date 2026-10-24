@@ -40,6 +40,7 @@ static NSArray<NSString *> *outNames(void) { return @[@"Haut-parleur / récepteu
 @property (nonatomic) NSArray<NSDictionary *> *active;
 @property (nonatomic) NSString *activeSig;
 @property (nonatomic) BOOL resetArmed;
+@property (nonatomic) NSString *probeText;
 @end
 
 @implementation SEQSettingsView
@@ -75,6 +76,8 @@ static NSArray<NSString *> *outNames(void) { return @[@"Haut-parleur / récepteu
 
     self.apps = SEQInstalledApps();
     self.active = @[];
+    self.table.rowHeight = UITableViewAutomaticDimension;
+    self.table.estimatedRowHeight = 44;
 
     __weak SEQSettingsView *ws = self;
     [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *tm) { [ws tick]; }];
@@ -83,7 +86,7 @@ static NSArray<NSString *> *outNames(void) { return @[@"Haut-parleur / récepteu
 
 - (void)setHidden:(BOOL)h {
     [super setHidden:h];
-    if (!h) { self.activeSig = nil; [self tick]; }
+    if (!h) { self.activeSig = nil; self.probeText = nil; [self tick]; }
 }
 
 - (void)backTapped { if (self.onBack) self.onBack(); }
@@ -93,20 +96,27 @@ static NSArray<NSString *> *outNames(void) { return @[@"Haut-parleur / récepteu
     NSArray *a = [SEQHub activeApps];
     NSMutableString *sig = [NSMutableString string];
     for (NSDictionary *d in a) [sig appendFormat:@"%@;", d[@"bid"]];
-    if ([sig isEqualToString:self.activeSig]) return;
-    self.activeSig = sig;
-    self.active = a;
-    [self.table reloadSections:[NSIndexSet indexSetWithIndex:0] withRowAnimation:UITableViewRowAnimationNone];
+    if (![sig isEqualToString:self.activeSig]) {
+        self.activeSig = sig;
+        self.active = a;
+        [self.table reloadSections:[NSIndexSet indexSetWithIndex:0] withRowAnimation:UITableViewRowAnimationNone];
+    }
+    NSString *r = [SEQHub probeReport];
+    if (![r isEqualToString:self.probeText]) {
+        self.probeText = r;
+        [self.table reloadSections:[NSIndexSet indexSetWithIndex:4] withRowAnimation:UITableViewRowAnimationNone];
+    }
 }
 
 #pragma mark - Table (0 = sons en cours, 1 = sorties, 2 = mode, 3 = applications)
 
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 4; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tv { return 5; }
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)s {
     if (s == 0) return MAX((NSInteger)self.active.count, 1);
     if (s == 1) return 5;
     if (s == 2) return 1;
+    if (s == 4) return 1;
     return (NSInteger)self.apps.count + 1;
 }
 
@@ -114,6 +124,7 @@ static NSArray<NSString *> *outNames(void) { return @[@"Haut-parleur / récepteu
     if (s == 0) return @"Sons en cours (choisis ceux traités par l’EQ)";
     if (s == 1) return @"Sorties audio (l’EQ s’applique à…)";
     if (s == 2) return @"Mode des applications";
+    if (s == 4) return @"Diagnostic audio système (pour le mode global)";
     return @"Applications";
 }
 
@@ -151,6 +162,16 @@ static NSArray<NSString *> *outNames(void) { return @[@"Haut-parleur / récepteu
         }
         UISegmentedControl *seg = [c.contentView viewWithTag:77];
         seg.selectedSegmentIndex = SEQGetPrefInt("mode", 0) ? 1 : 0;
+        return c;
+    }
+
+    if (ip.section == 4) {
+        UITableViewCell *c = [self plainCell:tv id:@"diag"];
+        c.textLabel.numberOfLines = 0;
+        c.textLabel.font = [UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular];
+        c.textLabel.textColor = [UIColor colorWithWhite:0.8 alpha:1];
+        c.textLabel.text = self.probeText.length ? self.probeText : @"…";
+        c.accessoryView = nil;
         return c;
     }
 

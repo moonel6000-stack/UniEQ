@@ -45,6 +45,9 @@ void SEQApplyState(uint64_t st, bool listed);
 void SEQProcess(SEQCtx *c, AudioBufferList *io, UInt32 frames);
 void SEQAnnounceActive(void);   /* défini dans Tweak.xm */
 uint64_t SEQHashString(const char *s);
+#define SEQ_NPROBE 10
+extern const char *kSEQProbeNames[SEQ_NPROBE];
+void SEQProbeInit(const char *proc);
 void SEQResetAppSelection(void);
 void SEQSetRoute(int route);    /* 1=HP 2=filaire 4=Bluetooth 8=AirPlay 16=autre 0=inconnu */
 bool SEQGetPrefBool(const char *key, bool def);
@@ -64,6 +67,7 @@ void SEQSetPrefInt(const char *key, int v);
 
 @interface SEQHub : NSObject
 + (void)start;
++ (NSString *)probeReport;   /* diagnostic mediaserverd / audiomxd */
 + (NSArray<NSDictionary *> *)activeApps;   /* apps qui produisent du son (bid, name) */
 @end
 #endif
